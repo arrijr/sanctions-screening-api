@@ -1,4 +1,6 @@
 import Fuse from "fuse.js";
+import { readFileSync } from "fs";
+import { join } from "path";
 import type { MatchResult, ScreenResponse } from "./types";
 
 const DATASET_LABELS: Record<string, string> = {
@@ -31,9 +33,8 @@ let _fuse: Fuse<SanctionsEntry> | null = null;
 
 function getSanctionsData(): SanctionsData {
   if (!_data) {
-    // Dynamic require to avoid bundling issues — file is generated at build time
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    _data = require("../data/sanctions.json") as SanctionsData;
+    const filePath = join(process.cwd(), "src/data/sanctions.json");
+    _data = JSON.parse(readFileSync(filePath, "utf-8")) as SanctionsData;
   }
   return _data;
 }
