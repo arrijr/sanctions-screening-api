@@ -55,9 +55,10 @@ function getFuse(dataset: string): Fuse<SanctionsEntry> {
       { name: "aliases", weight: 0.3 },
     ],
     includeScore: true,
-    threshold: 0.5, // fuse score 0=perfect, 1=no match — only return scores < 0.5
+    threshold: 0.3, // fuse: 0=perfect, 1=no match — 0.3 means our score ≥ 0.7 (possible_match+)
     ignoreLocation: true,
     minMatchCharLength: 3,
+    distance: 100,
   });
 
   if (dataset === "default") _fuse = fuse;
