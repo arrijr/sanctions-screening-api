@@ -56,7 +56,9 @@ export async function POST(req: NextRequest) {
     });
     const res = NextResponse.json(result, { status: 200 });
     return withRateHeaders(res, rl);
-  } catch {
-    return errorJson(500, "Internal server error", "INTERNAL_ERROR");
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("screen error:", msg);
+    return errorJson(500, `Internal server error: ${msg}`, "INTERNAL_ERROR");
   }
 }
