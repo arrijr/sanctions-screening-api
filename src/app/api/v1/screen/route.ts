@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const result = await screenEntity({
+    const result = screenEntity({
       name,
       entity_type,
       birth_date: b?.birth_date as string | undefined,
@@ -56,11 +56,7 @@ export async function POST(req: NextRequest) {
     });
     const res = NextResponse.json(result, { status: 200 });
     return withRateHeaders(res, rl);
-  } catch (err) {
-    const e = err as Error & { status?: number };
-    if (e.message === "upstream_unavailable") {
-      return errorJson(503, "Screening service temporarily unavailable.", "SERVICE_UNAVAILABLE");
-    }
+  } catch {
     return errorJson(500, "Internal server error", "INTERNAL_ERROR");
   }
 }

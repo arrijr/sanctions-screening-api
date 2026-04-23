@@ -77,14 +77,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Run up to 5 in parallel
-    const results = [];
-    for (let i = 0; i < inputs.length; i += 5) {
-      const batch = inputs.slice(i, i + 5);
-      const batchResults = await Promise.all(batch.map((input) => screenEntity(input)));
-      results.push(...batchResults);
-    }
-
+    const results = inputs.map((input) => screenEntity(input));
     const matched_count = results.filter((r) => r.matched).length;
     const res = NextResponse.json(
       {
@@ -96,11 +89,7 @@ export async function POST(req: NextRequest) {
       { status: 200 },
     );
     return withRateHeaders(res, rl);
-  } catch (err) {
-    const e = err as Error;
-    if (e.message === "upstream_unavailable") {
-      return errorJson(503, "Screening service temporarily unavailable.", "SERVICE_UNAVAILABLE");
-    }
+  } catch {
     return errorJson(500, "Internal server error", "INTERNAL_ERROR");
   }
 }
