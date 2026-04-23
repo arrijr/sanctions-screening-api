@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+  <rect width="120" height="120" rx="24" fill="#0F172A"/>
+  <text x="60" y="52" font-family="Inter, Helvetica Neue, Arial" font-weight="700"
+        font-size="22" fill="#FACC15" text-anchor="middle">SCR</text>
+  <circle cx="44" cy="70" r="4" fill="#FACC15"/>
+  <circle cx="60" cy="70" r="4" fill="#FACC15"/>
+  <circle cx="76" cy="70" r="4" fill="#FACC15"/>
+</svg>

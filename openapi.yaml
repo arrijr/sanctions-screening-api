@@ -1,0 +1,500 @@
+openapi: 3.0.0
+info:
+  title: Sanctions & PEP Screening API
+  version: "1.0.0"
+  description: >
+    Screen individuals and companies against 100+ global sanctions lists including
+    OFAC SDN, EU Consolidated Sanctions, UN Security Council, Interpol, and PEP
+    (Politically Exposed Persons) databases. Powered by OpenSanctions.
+    Returns fuzzy-matched results with a normalized score and verdict to support
+    AML, KYC, and KYB compliance workflows.
+
+servers:
+  - url: https://sanctions-screening-api.vercel.app
+    description: Production (Vercel origin)
+  - url: https://sanctions-screening-api.p.rapidapi.com
+    description: Production (RapidAPI gateway)
+
+security:
+  - RapidAPIKey: []
+
+paths:
+  /api/v1/screen:
+    post:
+      summary: Screen a single entity
+      description: >
+        Screens a person or company against global sanctions lists and PEP databases.
+        Uses fuzzy matching — partial name matches and spelling variations are detected.
+        Returns a normalized score (0–1) and a verdict to support compliance decisions.
+        Supported datasets: default (all lists), sanctions (sanctions only), peps (PEPs only).
+      operationId: screenEntity
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScreenRequest"
+            examples:
+              screen_person:
+                summary: Screen a person
+                value:
+                  name: "Vladimir Putin"
+                  entity_type: "person"
+                  birth_date: "1952-10-07"
+                  nationality: "RU"
+                  dataset: "default"
+              screen_company:
+                summary: Screen a company
+                value:
+                  name: "Gazprom"
+                  entity_type: "company"
+                  country: "RU"
+                  dataset: "sanctions"
+              screen_minimal:
+                summary: Screen with name only (minimal)
+                value:
+                  name: "Max Mustermann"
+      responses:
+        "200":
+          description: Screening result
+          headers:
+            X-RateLimit-Remaining:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScreenResponse"
+              examples:
+                strong_match:
+                  summary: Strong match found
+                  value:
+                    matched: true
+                    entity_type: "person"
+                    query:
+                      name: "Vladimir Putin"
+                      birth_date: "1952-10-07"
+                    score: 0.98
+                    verdict: "strong_match"
+                    matches:
+                      - id: "Q7747"
+                        name: "Vladimir Vladimirovich Putin"
+                        score: 0.98
+                        datasets: ["us_ofac_sdn", "eu_financial_sanctions", "un_sc_sanctions"]
+                        entity_type: "person"
+                        properties:
+                          birth_date: ["1952-10-07"]
+                          nationality: ["Russia"]
+                          position: ["President of Russia"]
+                        sanctioned_by: ["OFAC", "EU", "UN Security Council"]
+                        first_seen: "2022-02-25"
+                        last_seen: "2026-04-01"
+                    datasets_checked: ["default"]
+                    screened_at: "2026-04-22T10:00:00Z"
+                no_match:
+                  summary: No match found
+                  value:
+                    matched: false
+                    entity_type: "person"
+                    query:
+                      name: "Max Mustermann"
+                    score: 0.0
+                    verdict: "no_match"
+                    matches: []
+                    datasets_checked: ["default"]
+                    screened_at: "2026-04-22T10:00:00Z"
+        "400":
+          description: Bad request (missing name, invalid parameters)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              examples:
+                missing_name:
+                  value:
+                    error: "Missing required field: name"
+                    code: "MISSING_NAME"
+                invalid_dataset:
+                  value:
+                    error: "Invalid dataset. Must be one of: default, sanctions, peps"
+                    code: "INVALID_DATASET"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Upstream screening service unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "Screening service temporarily unavailable."
+                code: "SERVICE_UNAVAILABLE"
+
+  /api/v1/screen/batch:
+    post:
+      summary: Screen up to 10 entities at once
+      description: >
+        Screens multiple persons or companies in a single request.
+        Results are returned in the same order as the input.
+        Batch endpoint requires Basic plan or higher.
+        Maximum batch size: 10 entities.
+      operationId: screenEntityBatch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - entities
+              properties:
+                entities:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/ScreenRequest"
+                  minItems: 1
+                  maxItems: 10
+                  description: List of entities to screen (max 10)
+                dataset:
+                  type: string
+                  enum: [default, sanctions, peps]
+                  default: default
+                  description: Dataset to screen against (applies to all entities)
+            example:
+              entities:
+                - name: "Vladimir Putin"
+                  entity_type: "person"
+                  birth_date: "1952-10-07"
+                - name: "Gazprom"
+                  entity_type: "company"
+                  country: "RU"
+              dataset: "default"
+      responses:
+        "200":
+          description: Batch screening results
+          headers:
+            X-RateLimit-Remaining:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ScreenResponse"
+                  total:
+                    type: integer
+                    example: 2
+                  matched_count:
+                    type: integer
+                    example: 1
+                  screened_at:
+                    type: string
+                    format: date-time
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Batch not available on current plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: "Batch screening is not available on your current plan."
+                code: "BATCH_NOT_AVAILABLE"
+        "429":
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/datasets:
+    get:
+      summary: List available screening datasets
+      description: >
+        Returns all available datasets and their coverage (number of entities,
+        last updated). Useful to understand which sanctions lists are included.
+      operationId: listDatasets
+      responses:
+        "200":
+          description: Available datasets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetsResponse"
+              example:
+                datasets:
+                  - id: "default"
+                    name: "All Sources (Default)"
+                    description: "All sanctions lists and PEP databases combined"
+                    entity_count: 75000
+                    last_updated: "2026-04-21"
+                  - id: "sanctions"
+                    name: "Sanctions Only"
+                    description: "OFAC SDN, EU Consolidated, UN Security Council, UK OFSI, and 100+ other sanctions lists"
+                    entity_count: 55000
+                    last_updated: "2026-04-21"
+                  - id: "peps"
+                    name: "PEPs Only"
+                    description: "Politically Exposed Persons — heads of state, senior officials, their family members"
+                    entity_count: 20000
+                    last_updated: "2026-04-21"
+                data_sources:
+                  - "OFAC SDN (US)"
+                  - "EU Consolidated Sanctions"
+                  - "UN Security Council"
+                  - "UK OFSI"
+                  - "Interpol Red Notices"
+                  - "FBI Most Wanted"
+                  - "World Bank Debarred"
+                  - "100+ additional sources"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/health:
+    get:
+      summary: Health check
+      description: Returns service status and upstream API availability.
+      operationId: healthCheck
+      responses:
+        "200":
+          description: Service status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+                  upstream_available:
+                    type: boolean
+                    example: true
+                  timestamp:
+                    type: string
+                    format: date-time
+
+components:
+  securitySchemes:
+    RapidAPIKey:
+      type: apiKey
+      in: header
+      name: X-RapidAPI-Key
+
+  schemas:
+    ScreenRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          description: Full name of the person or company to screen
+          example: "Vladimir Putin"
+        entity_type:
+          type: string
+          enum: [person, company]
+          default: person
+          description: Type of entity to screen
+        birth_date:
+          type: string
+          format: date
+          description: Date of birth (person only) — improves match accuracy. Format YYYY-MM-DD
+          example: "1952-10-07"
+        nationality:
+          type: string
+          description: ISO 3166-1 alpha-2 country code (person only)
+          example: "RU"
+        country:
+          type: string
+          description: ISO 3166-1 alpha-2 country code of registration/incorporation (company only)
+          example: "RU"
+        dataset:
+          type: string
+          enum: [default, sanctions, peps]
+          default: default
+          description: >
+            Dataset to screen against.
+            default = all sources (sanctions + PEPs),
+            sanctions = sanctions lists only (OFAC, EU, UN etc.),
+            peps = politically exposed persons only
+
+    MatchResult:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique entity ID in OpenSanctions
+          example: "Q7747"
+        name:
+          type: string
+          description: Official name of the matched entity
+          example: "Vladimir Vladimirovich Putin"
+        score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Similarity score (0–1) between query and this match
+          example: 0.98
+        datasets:
+          type: array
+          items:
+            type: string
+          description: Sanctions lists / datasets this entity appears in
+          example: ["us_ofac_sdn", "eu_financial_sanctions"]
+        entity_type:
+          type: string
+          enum: [person, company, organization, vessel, aircraft]
+          example: "person"
+        properties:
+          type: object
+          description: Key properties of the matched entity (birth_date, nationality, position, etc.)
+          additionalProperties:
+            type: array
+            items:
+              type: string
+        sanctioned_by:
+          type: array
+          items:
+            type: string
+          description: Human-readable list of sanctioning authorities
+          example: ["OFAC", "EU", "UN Security Council"]
+        first_seen:
+          type: string
+          format: date
+          description: Date the entity first appeared in the dataset
+          example: "2022-02-25"
+        last_seen:
+          type: string
+          format: date
+          description: Date the entity was last confirmed in the dataset
+          example: "2026-04-01"
+
+    ScreenResponse:
+      type: object
+      properties:
+        matched:
+          type: boolean
+          description: True if any match with score ≥ 0.5 was found
+          example: true
+        entity_type:
+          type: string
+          enum: [person, company]
+          example: "person"
+        query:
+          type: object
+          description: Echoed query parameters for reference
+          properties:
+            name:
+              type: string
+            birth_date:
+              type: string
+            nationality:
+              type: string
+            country:
+              type: string
+        score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          description: Highest score among all matches (0 if no match)
+          example: 0.98
+        verdict:
+          type: string
+          enum: [strong_match, possible_match, weak_match, no_match]
+          description: >
+            Recommended action:
+            strong_match (≥0.9) = block / escalate immediately,
+            possible_match (0.7–0.89) = manual review required,
+            weak_match (0.5–0.69) = note for record,
+            no_match (<0.5) = clear
+          example: "strong_match"
+        matches:
+          type: array
+          items:
+            $ref: "#/components/schemas/MatchResult"
+          description: All matches with score ≥ 0.5, sorted by score descending
+        datasets_checked:
+          type: array
+          items:
+            type: string
+          description: Datasets that were screened
+          example: ["default"]
+        screened_at:
+          type: string
+          format: date-time
+          example: "2026-04-22T10:00:00Z"
+
+    DatasetInfo:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "default"
+        name:
+          type: string
+          example: "All Sources (Default)"
+        description:
+          type: string
+        entity_count:
+          type: integer
+          example: 75000
+        last_updated:
+          type: string
+          format: date
+
+    DatasetsResponse:
+      type: object
+      properties:
+        datasets:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetInfo"
+        data_sources:
+          type: array
+          items:
+            type: string
+          description: High-level list of included data sources
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - code
+      properties:
+        error:
+          type: string
+        code:
+          type: string
+        details:
+          type: object
