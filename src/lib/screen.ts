@@ -139,14 +139,15 @@ export function screenEntity(input: ScreenInput): ScreenResponse {
     })
     .sort((a, b) => b.score - a.score);
 
-  // Narrow by birth_date if provided (post-filter to improve precision)
+  // Narrow by birth_date year if provided — guard against non-string values from XML parsing
+  const birthYear = birth_date?.slice(0, 4);
   const filtered =
-    birth_date && matches.length > 1
-      ? matches.filter(
-          (m) =>
-            !m.properties.birth_date ||
-            m.properties.birth_date.some((d: string) => d.includes(birth_date.slice(0, 4)))
-        )
+    birthYear && matches.length > 1
+      ? matches.filter((m) => {
+          const dates = m.properties.birth_date;
+          if (!dates || !Array.isArray(dates)) return true;
+          return dates.some((d) => typeof d === "string" && d.includes(birthYear));
+        })
       : matches;
 
   const finalMatches = filtered.length ? filtered : matches;
